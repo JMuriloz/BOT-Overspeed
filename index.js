@@ -162,11 +162,10 @@ async function atualizarPainelAdmin(guild) {
 client.once("ready", async () => {
   console.log(`✅ Bot online como ${client.user.tag}`)
 
-  // Registra os Slash Commands globais para os servidores configurarem
   await client.application.commands.set([
     {
       name: 'setup',
-      description: 'Abre o painel de configuração de IDs do servidor (Modais)'
+      description: 'Abre o painel de configuração de IDs do servidor'
     },
     {
       name: 'painel',
@@ -174,7 +173,6 @@ client.once("ready", async () => {
     }
   ])
 
-  // Atualiza os painéis admin de todos os servidores a cada minuto
   setInterval(() => {
     client.guilds.cache.forEach(guild => {
       atualizarPainelAdmin(guild)
@@ -186,15 +184,13 @@ client.once("ready", async () => {
 // --- EVENTOS DE INTERAÇÃO ---
 client.on("interactionCreate", async interaction => {
   const { member, guild, user, customId } = interaction
+  if (!guild) return
 
-  // Inicializa a pontuação do servidor se não existir
   if (!pontos[guild.id]) pontos[guild.id] = {}
   const serverPontos = pontos[guild.id]
   const config = configs[guild.id] || {}
 
-  // ==========================================
-  // 1. SLASH COMMANDS (/setup e /painel)
-  // ==========================================
+  // 1. SLASH COMMANDS
   if (interaction.isChatInputCommand()) {
     if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return interaction.reply({ content: "❌ Apenas administradores podem usar isso.", ephemeral: true })
@@ -203,7 +199,7 @@ client.on("interactionCreate", async interaction => {
     if (interaction.commandName === 'setup') {
       const embed = new EmbedBuilder()
         .setTitle("⚙️ Setup da Mecânica")
-        .setDescription("Devido ao limite do Discord de 5 campos por janela modal, dividimos a configuração. Clique nos botões abaixo e cole os IDs das salas e cargos.")
+        .setDescription("Clique nos botões abaixo para configurar os canais e cargos do sistema.")
         .setColor("#3498DB")
 
       const row = new ActionRowBuilder().addComponents(
@@ -219,12 +215,23 @@ client.on("interactionCreate", async interaction => {
       
       try {
         const canalPainel = await guild.channels.fetch(config.CANAL_PAINEL)
+        
         const embed = new EmbedBuilder()
-          .setTitle("🔧 | BATER PONTO — MECÂNICA")
-          .setDescription(">>> Utilize os botões abaixo para gerenciar o seu turno de trabalho. Lembre-se de finalizar ao sair da cidade!")
+          .setTitle("🔧 SISTEMA DE PONTO — MECÂNICA")
           .setColor("#E67E22")
-          .setImage("https://i.imgur.com/8Q5Z2gA.png")
-          .setFooter({ text: "Sistema Integrado" })
+          .setDescription(
+            "### 🕒 Gerenciamento de Expediente\n" +
+            "Seja bem-vindo ao sistema de controle de horas. Utilize os controles abaixo para gerenciar seu turno.\n\n" +
+            "**Guia de Operação:**\n" +
+            "🟢 `Iniciar` — Registra sua entrada e começa a contar seu tempo.\n" +
+            "⏸️ `Pausar` — Utilize para intervalos. O tempo para de contar.\n" +
+            "▶️ `Retomar` — Finaliza sua pausa e volta a trabalhar.\n" +
+            "🔴 `Finalizar` — Encerra o turno e envia para as logs.\n\n" +
+            "--- \n" +
+            "⚠️ **Atenção:** *Lembre-se de finalizar o ponto antes de sair da cidade!*"
+          )
+          .setFooter({ text: "Oficina Integrada • Sistema de Gerenciamento", iconURL: guild.iconURL() })
+          .setTimestamp()
 
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId("iniciar").setLabel("Iniciar").setStyle(ButtonStyle.Success).setEmoji("🟢"),
@@ -234,114 +241,78 @@ client.on("interactionCreate", async interaction => {
         )
 
         await canalPainel.send({ embeds: [embed], components: [row] })
-        return interaction.reply({ content: `✅ Painel enviado com sucesso no canal <#${config.CANAL_PAINEL}>!`, ephemeral: true })
+        return interaction.reply({ content: `✅ Painel enviado em <#${config.CANAL_PAINEL}>!`, ephemeral: true })
       } catch (e) {
-        return interaction.reply({ content: "❌ Erro ao enviar. Verifique se o ID do canal está correto e se o bot tem permissão de falar lá.", ephemeral: true })
+        return interaction.reply({ content: "❌ Erro ao enviar o painel. Verifique as permissões do bot.", ephemeral: true })
       }
     }
   }
 
-  // ==========================================
   // 2. ABRIR MODAIS DE SETUP
-  // ==========================================
   if (interaction.isButton() && customId.startsWith("setup_")) {
     if (customId === "setup_canais") {
       const modal = new ModalBuilder().setCustomId('modal_configs_canais').setTitle('Configurar Canais (IDs)')
-      
-      const inputAdmin = new TextInputBuilder().setCustomId('CANAL_ADMIN').setLabel("ID do Canal Admin").setStyle(TextInputStyle.Short).setRequired(true).setValue(config.CANAL_ADMIN || "")
-      const inputPainel = new TextInputBuilder().setCustomId('CANAL_PAINEL').setLabel("ID do Canal de Bater Ponto").setStyle(TextInputStyle.Short).setRequired(true).setValue(config.CANAL_PAINEL || "")
-      const inputLogs = new TextInputBuilder().setCustomId('CANAL_LOGS').setLabel("ID do Canal de Logs").setStyle(TextInputStyle.Short).setRequired(true).setValue(config.CANAL_LOGS || "")
-      const inputRanking = new TextInputBuilder().setCustomId('CANAL_RANKING').setLabel("ID do Canal de Ranking").setStyle(TextInputStyle.Short).setRequired(true).setValue(config.CANAL_RANKING || "")
-
       modal.addComponents(
-        new ActionRowBuilder().addComponents(inputAdmin),
-        new ActionRowBuilder().addComponents(inputPainel),
-        new ActionRowBuilder().addComponents(inputLogs),
-        new ActionRowBuilder().addComponents(inputRanking)
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('CANAL_ADMIN').setLabel("ID do Canal Admin").setStyle(TextInputStyle.Short).setRequired(true).setValue(config.CANAL_ADMIN || "")),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('CANAL_PAINEL').setLabel("ID do Canal de Bater Ponto").setStyle(TextInputStyle.Short).setRequired(true).setValue(config.CANAL_PAINEL || "")),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('CANAL_LOGS').setLabel("ID do Canal de Logs").setStyle(TextInputStyle.Short).setRequired(true).setValue(config.CANAL_LOGS || "")),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('CANAL_RANKING').setLabel("ID do Canal de Ranking").setStyle(TextInputStyle.Short).setRequired(true).setValue(config.CANAL_RANKING || ""))
       )
       return interaction.showModal(modal)
     }
 
     if (customId === "setup_cargos") {
       const modal = new ModalBuilder().setCustomId('modal_configs_cargos').setTitle('Configurar Cargos (IDs)')
-      
-      const inputCargoAdmin = new TextInputBuilder().setCustomId('CARGO_ADMIN').setLabel("ID do Cargo Admin/Chefe").setStyle(TextInputStyle.Short).setRequired(true).setValue(config.CARGO_ADMIN || "")
-      const inputCargoMec = new TextInputBuilder().setCustomId('CARGO_MECANICO').setLabel("ID do Cargo Mecânico").setStyle(TextInputStyle.Short).setRequired(true).setValue(config.CARGO_MECANICO || "")
-
       modal.addComponents(
-        new ActionRowBuilder().addComponents(inputCargoAdmin),
-        new ActionRowBuilder().addComponents(inputCargoMec)
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('CARGO_ADMIN').setLabel("ID do Cargo Admin/Chefe").setStyle(TextInputStyle.Short).setRequired(true).setValue(config.CARGO_ADMIN || "")),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('CARGO_MECANICO').setLabel("ID do Cargo Mecânico").setStyle(TextInputStyle.Short).setRequired(true).setValue(config.CARGO_MECANICO || ""))
       )
       return interaction.showModal(modal)
     }
   }
 
-  // ==========================================
   // 3. SALVAR MODAIS
-  // ==========================================
   if (interaction.isModalSubmit()) {
     if (customId === 'modal_configs_canais' || customId === 'modal_configs_cargos') {
       if (!configs[guild.id]) configs[guild.id] = {}
-      
-      interaction.fields.fields.forEach((field) => {
-        configs[guild.id][field.customId] = field.value.trim()
-      })
-      
+      interaction.fields.fields.forEach((field) => { configs[guild.id][field.customId] = field.value.trim() })
       salvarConfigs()
-      atualizarPainelAdmin(guild)
-      atualizarRanking(guild)
-      return interaction.reply({ content: `✅ **Configurações salvas com sucesso!** O bot já vai começar a operar nos canais informados.`, ephemeral: true })
+      atualizarPainelAdmin(guild); atualizarRanking(guild)
+      return interaction.reply({ content: `✅ **Configurações salvas!**`, ephemeral: true })
     }
 
-    // Modal de adicionar/remover tempo do admin
     if (customId.startsWith("modal_add") || customId.startsWith("modal_rem")) {
       const alvoId = customId.split("_")[2]
-      const minutosStr = interaction.fields.getTextInputValue('input_minutos')
-      const minutos = parseInt(minutosStr)
-
-      if (isNaN(minutos) || minutos <= 0) return interaction.reply({ content: "❌ **Erro:** Digite um número válido de minutos.", ephemeral: true })
-
+      const minutos = parseInt(interaction.fields.getTextInputValue('input_minutos'))
+      if (isNaN(minutos) || minutos <= 0) return interaction.reply({ content: "❌ Digite um número válido.", ephemeral: true })
       const ms = minutos * 60000 
 
       if (customId.startsWith("modal_add")) {
         serverPontos[alvoId].total += ms
         salvarPontos(); atualizarRanking(guild); atualizarPainelAdmin(guild)
-        return interaction.reply({ content: `✅ **Sucesso!** Foi adicionado \`${minutos} minutos\` para o mecânico.`, ephemeral: true })
+        return interaction.reply({ content: `✅ Adicionado \`${minutos}m\` para o mecânico.`, ephemeral: true })
       }
-
       if (customId.startsWith("modal_rem")) {
         serverPontos[alvoId].total = Math.max(0, serverPontos[alvoId].total - ms)
         salvarPontos(); atualizarRanking(guild); atualizarPainelAdmin(guild)
-        return interaction.reply({ content: `✅ **Sucesso!** Foi removido \`${minutos} minutos\` do mecânico.`, ephemeral: true })
+        return interaction.reply({ content: `✅ Removido \`${minutos}m\` do mecânico.`, ephemeral: true })
       }
     }
   }
 
-  // ==========================================
-  // 4. DROPDOWN DO PAINEL ADMIN
-  // ==========================================
+  // 4. DROPDOWN ADMIN
   if (interaction.isStringSelectMenu() && customId === 'admin_select_user') {
-    if (!config.CARGO_ADMIN || !member.roles.cache.has(config.CARGO_ADMIN)) {
-      return interaction.reply({ content: "❌ **Acesso negado.** Apenas a administração pode usar isso.", ephemeral: true })
-    }
-
+    if (!config.CARGO_ADMIN || !member.roles.cache.has(config.CARGO_ADMIN)) return interaction.reply({ content: "❌ Acesso negado.", ephemeral: true })
     const selectedUserId = interaction.values[0]
     const p = serverPontos[selectedUserId]
-    const nome = p.nome || "Mecânico Desconhecido"
-
-    let lista = Object.entries(serverPontos).sort((a, b) => b[1].total - a[1].total)
-    let posicao = lista.findIndex(x => x[0] === selectedUserId) + 1
-
     const statusTexto = p.ativo ? (p.pausado ? "🟡 Pausado" : "🟢 Em Serviço") : "🔴 Fora de Serviço"
 
     const embedInfo = new EmbedBuilder()
-      .setTitle(`⚙️ Gerenciando: ${nome}`)
-      .setDescription(`<@${selectedUserId}>`)
+      .setTitle(`⚙️ Gerenciando: ${p.nome || "Mecânico"}`)
       .setColor("#9B59B6")
       .addFields(
         { name: "⏱️ Horas Totais", value: `\`${formatarTempo(p.total)}\``, inline: true },
-        { name: "🏆 Posição Rank", value: `\`${posicao}º lugar\``, inline: true },
-        { name: "📡 Status Atual", value: `**${statusTexto}**`, inline: true }
+        { name: "📡 Status", value: `**${statusTexto}**`, inline: true }
       )
 
     const botoesAcao = new ActionRowBuilder().addComponents(
@@ -349,141 +320,74 @@ client.on("interactionCreate", async interaction => {
       new ButtonBuilder().setCustomId(`rem_time_${selectedUserId}`).setLabel("Rem Tempo").setStyle(ButtonStyle.Danger).setEmoji("➖"),
       new ButtonBuilder().setCustomId(`force_stop_${selectedUserId}`).setLabel("Encerrar Ponto").setStyle(ButtonStyle.Secondary).setEmoji("⛔")
     )
-
     return interaction.reply({ embeds: [embedInfo], components: [botoesAcao], ephemeral: true })
   }
 
-  // ==========================================
-  // 5. BOTÕES DIVERSOS E BATER PONTO
-  // ==========================================
+  // 5. BOTÕES DE PONTO
   if (interaction.isButton()) {
-    
-    // -- ADMIN --
-    if (customId.startsWith("add_time_")) {
+    if (customId.startsWith("add_time_") || customId.startsWith("rem_time_")) {
       const alvoId = customId.split("_")[2]
-      const modal = new ModalBuilder().setCustomId(`modal_add_${alvoId}`).setTitle("➕ Adicionar Tempo")
-      const input = new TextInputBuilder().setCustomId('input_minutos').setLabel("Quantos MINUTOS quer adicionar?").setStyle(TextInputStyle.Short).setRequired(true)
-      modal.addComponents(new ActionRowBuilder().addComponents(input))
-      return interaction.showModal(modal)
-    }
-
-    if (customId.startsWith("rem_time_")) {
-      const alvoId = customId.split("_")[2]
-      const modal = new ModalBuilder().setCustomId(`modal_rem_${alvoId}`).setTitle("➖ Remover Tempo")
-      const input = new TextInputBuilder().setCustomId('input_minutos').setLabel("Quantos MINUTOS quer remover?").setStyle(TextInputStyle.Short).setRequired(true)
-      modal.addComponents(new ActionRowBuilder().addComponents(input))
+      const tipo = customId.startsWith("add") ? "add" : "rem"
+      const modal = new ModalBuilder().setCustomId(`modal_${tipo}_${alvoId}`).setTitle(tipo === "add" ? "➕ Adicionar Tempo" : "➖ Remover Tempo")
+      modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('input_minutos').setLabel("Minutos").setStyle(TextInputStyle.Short).setRequired(true)))
       return interaction.showModal(modal)
     }
 
     if (customId.startsWith("force_stop_")) {
-      await interaction.deferReply({ ephemeral: true })
       const alvoId = customId.split("_")[2]
       const p = serverPontos[alvoId]
-      
-      if (!p.ativo) return interaction.editReply("❌ Este usuário já está fora de serviço.")
-      
-      const agora = Date.now()
-      let tempo = agora - p.inicio - p.pausas
-      p.total += tempo
-      p.ativo = false; p.inicio = null; p.pausado = false; p.pausas = 0
-      
+      if (!p?.ativo) return interaction.reply({ content: "❌ Usuário não está em serviço.", ephemeral: true })
+      p.total += (Date.now() - p.inicio - p.pausas); p.ativo = false; p.inicio = null; p.pausado = false; p.pausas = 0
       salvarPontos(); atualizarRanking(guild); atualizarPainelAdmin(guild)
-      return interaction.editReply("⛔ **Ponto encerrado** forçadamente pela administração.")
+      return interaction.reply({ content: "⛔ Ponto encerrado forçadamente.", ephemeral: true })
     }
 
     if (customId === "stats_global") {
       if (!config.CARGO_ADMIN || !member.roles.cache.has(config.CARGO_ADMIN)) return interaction.reply({ content: "❌ Acesso negado.", ephemeral: true })
-      await interaction.deferReply({ ephemeral: true });
-      try { await guild.members.fetch() } catch (e) {}
-
-      const cargoMecanico = guild.roles.cache.get(config.CARGO_MECANICO);
-      const totalMembrosComCargo = cargoMecanico ? cargoMecanico.members.size : 0;
       const emServico = Object.values(serverPontos).filter(p => p.ativo).length
-
-      return interaction.editReply({ 
-        content: `📊 **ESTATÍSTICAS DA MECÂNICA:**\n\n👥 Membros contratados: \`${totalMembrosComCargo}\`\n🔧 Em serviço agora: \`${emServico}\`` 
-      }).catch(() => {})
+      return interaction.reply({ content: `📊 **ESTATÍSTICAS:**\n🔧 Em serviço agora: \`${emServico}\``, ephemeral: true })
     }
 
-    if (customId === "reset_global") {
-      if (!config.CARGO_ADMIN || !member.roles.cache.has(config.CARGO_ADMIN)) return interaction.reply({ content: "❌ Acesso negado.", ephemeral: true })
-      pontos[guild.id] = {}
-      salvarPontos(); atualizarRanking(guild); atualizarPainelAdmin(guild)
-      return interaction.reply({ content: "⚠️ **ATENÇÃO:** Todos os registros e o ranking foram resetados!", ephemeral: true })
-    }
-
-    // -- BATER PONTO (MECÂNICOS) --
     if (["iniciar", "pausar", "retomar", "finalizar"].includes(customId)) {
+      if (!config.CARGO_MECANICO || !member.roles.cache.has(config.CARGO_MECANICO)) return interaction.reply({ content: "❌ Apenas mecânicos podem usar isso.", ephemeral: true })
       await interaction.deferReply({ ephemeral: true })
-
-      if (!config.CARGO_MECANICO) return interaction.editReply("❌ O sistema não foi configurado pelo dono da cidade ainda.")
-      if (!member.roles.cache.has(config.CARGO_MECANICO)) {
-        return interaction.editReply("❌ **Acesso negado.** Apenas mecânicos podem bater ponto.")
-      }
-
-      if (!serverPontos[user.id]) {
-        serverPontos[user.id] = { total: 0, ativo: false, inicio: null, pausado: false, pausaInicio: null, pausas: 0, nome: member.displayName }
-      } else {
-        serverPontos[user.id].nome = member.displayName 
-      }
-
+      
+      if (!serverPontos[user.id]) serverPontos[user.id] = { total: 0, ativo: false, inicio: null, pausado: false, pausas: 0, nome: member.displayName }
+      serverPontos[user.id].nome = member.displayName 
       const p = serverPontos[user.id]
       const agora = Date.now()
 
       if (customId === "iniciar") {
-        if (p.ativo) return interaction.editReply("⚠️ Você já está com o ponto aberto!")
+        if (p.ativo) return interaction.editReply("⚠️ Ponto já está aberto!")
         p.ativo = true; p.inicio = agora; p.pausas = 0; p.pausado = false
         salvarPontos(); atualizarPainelAdmin(guild)
-        return interaction.editReply("🟢 **Ponto iniciado!** Bom trabalho.")
+        return interaction.editReply("🟢 **Ponto iniciado!**")
       }
-
       if (customId === "pausar") {
-        if (!p.ativo || p.pausado) return interaction.editReply("⚠️ Não é possível pausar agora.")
+        if (!p.ativo || p.pausado) return interaction.editReply("⚠️ Não pode pausar agora.")
         p.pausado = true; p.pausaInicio = agora
         salvarPontos(); atualizarPainelAdmin(guild)
-        return interaction.editReply("⏸️ **Pausa iniciada.** Vai tomar um cafézinho!")
+        return interaction.editReply("⏸️ **Pausa iniciada.**")
       }
-
       if (customId === "retomar") {
         if (!p.pausado) return interaction.editReply("⚠️ Você não está em pausa.")
         p.pausado = false; p.pausas += agora - p.pausaInicio
         salvarPontos(); atualizarPainelAdmin(guild)
-        return interaction.editReply("▶️ **Pausa finalizada.** De volta ao trabalho!")
+        return interaction.editReply("▶️ **Ponto retomado!**")
       }
-
       if (customId === "finalizar") {
-        if (!p.ativo) return interaction.editReply("⚠️ Você precisa iniciar o ponto primeiro.")
-        
-        let tempo = agora - p.inicio - p.pausas
+        if (!p.ativo) return interaction.editReply("⚠️ Ponto não iniciado.")
+        const tempo = agora - p.inicio - p.pausas
         p.total += tempo
-
-        const inicioDiscord = `<t:${Math.floor(p.inicio / 1000)}:F>`
-        const fimDiscord = `<t:${Math.floor(agora / 1000)}:F>`
-
-        const embedLog = new EmbedBuilder()
-          .setTitle("📋 | REGISTRO DE EXPEDIENTE")
-          .setColor("#2ECC71")
-          .setThumbnail(user.displayAvatarURL({ dynamic: true }))
-          .addFields(
-            { name: "👤 Mecânico", value: `<@${user.id}> (${p.nome})`, inline: false },
-            { name: "🟢 Início do Turno", value: inicioDiscord, inline: true },
-            { name: "🔴 Fim do Turno", value: fimDiscord, inline: true },
-            { name: "⏱️ Tempo Trabalhado Agora", value: `\`${formatarTempo(tempo)}\``, inline: false },
-            { name: "📈 Total Acumulado no Rank", value: `\`${formatarTempo(p.total)}\``, inline: false }
-          )
-          .setFooter({ text: "Sistema Integrado", iconURL: guild.iconURL() })
-          .setTimestamp()
-
+        
         if (config.CANAL_LOGS) {
-          try {
-            const canalLogs = await guild.channels.fetch(config.CANAL_LOGS)
-            canalLogs.send({ embeds: [embedLog] })
-          } catch (e) {}
+          const embedLog = new EmbedBuilder().setTitle("📋 REGISTRO").setColor("#2ECC71").addFields({ name: "👤 Mecânico", value: `<@${user.id}>` }, { name: "⏱️ Tempo", value: `\`${formatarTempo(tempo)}\`` }).setTimestamp()
+          try { (await guild.channels.fetch(config.CANAL_LOGS)).send({ embeds: [embedLog] }) } catch (e) {}
         }
 
         p.ativo = false; p.inicio = null; p.pausado = false; p.pausas = 0
         salvarPontos(); atualizarRanking(guild); atualizarPainelAdmin(guild)
-        return interaction.editReply("🔴 **Ponto finalizado com sucesso!** O registro foi enviado para as logs.")
+        return interaction.editReply("🔴 **Ponto finalizado!**")
       }
     }
   }
