@@ -377,17 +377,39 @@ client.on("interactionCreate", async interaction => {
       }
       if (customId === "finalizar") {
         if (!p.ativo) return interaction.editReply("⚠️ Ponto não iniciado.")
-        const tempo = agora - p.inicio - p.pausas
-        p.total += tempo
+        
+        const tempoSessao = agora - p.inicio - (p.pausas || 0)
+        p.total += tempoSessao
         
         if (config.CANAL_LOGS) {
-          const embedLog = new EmbedBuilder().setTitle("📋 REGISTRO").setColor("#2ECC71").addFields({ name: "👤 Mecânico", value: `<@${user.id}>` }, { name: "⏱️ Tempo", value: `\`${formatarTempo(tempo)}\`` }).setTimestamp()
-          try { (await guild.channels.fetch(config.CANAL_LOGS)).send({ embeds: [embedLog] }) } catch (e) {}
+          const agoraData = new Date()
+          const horaFooter = agoraData.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+
+          // EMBED ESTILO ANTIGO (CONSERTADO)
+          const embedLog = new EmbedBuilder()
+            .setTitle("📋 | REGISTRO DE EXPEDIENTE")
+            .setColor("#2ECC71")
+            .setThumbnail(member.displayAvatarURL({ dynamic: true }))
+            .addFields(
+              { name: "👤 Mecânico", value: `<@${user.id}> (${member.displayName})` },
+              { name: "🟢 Início do Turno", value: `<t:${Math.floor(p.inicio / 1000)}:F>`, inline: true },
+              { name: "🔴 Fim do Turno", value: `<t:${Math.floor(agora / 1000)}:F>`, inline: true },
+              { name: "⌚ Tempo Trabalhado Agora", value: `\`${formatarTempo(tempoSessao)}\`` },
+              { name: "📈 Total Acumulado no Rank", value: `\`${formatarTempo(p.total)}\`` }
+            )
+            .setFooter({ text: `Sistema Integrado • Hoje às ${horaFooter}` })
+
+          try { 
+            const canalLogs = await guild.channels.fetch(config.CANAL_LOGS)
+            await canalLogs.send({ embeds: [embedLog] }) 
+          } catch (e) {
+            console.log("Erro ao enviar log:", e)
+          }
         }
 
         p.ativo = false; p.inicio = null; p.pausado = false; p.pausas = 0
         salvarPontos(); atualizarRanking(guild); atualizarPainelAdmin(guild)
-        return interaction.editReply("🔴 **Ponto finalizado!**")
+        return interaction.editReply("🔴 **Ponto finalizado! Registro enviado para as logs.**")
       }
     }
   }
