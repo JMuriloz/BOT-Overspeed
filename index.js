@@ -25,6 +25,9 @@ const client = new Client({
 
 const TOKEN = process.env.TOKEN;
 
+// 👇 COLOQUE SEU ID DO DISCORD AQUI DENTRO DAS ASPAS 👇
+const BOT_OWNER_ID = '853991179149246505'; 
+
 // --- GARANTIR QUE OS ARQUIVOS EXISTAM ---
 if (!fs.existsSync("pontos.json")) fs.writeFileSync("pontos.json", "{}");
 if (!fs.existsSync("configs.json")) fs.writeFileSync("configs.json", "{}");
@@ -46,12 +49,14 @@ function formatarTempo(ms) {
   return `${h}h ${m}m`;
 }
 
-// --- FUNÇÕES DE SEGURANÇA (Evita lockout se os cargos sumirem) ---
-function isAdmin(member, config) {
+// --- FUNÇÕES DE SEGURANÇA (O Dono do bot sempre tem permissão) ---
+function isAdmin(member, user, config) {
+  if (user.id === BOT_OWNER_ID) return true; // Você sempre terá acesso
   return member.permissions.has(PermissionsBitField.Flags.Administrator) || (config.CARGO_ADMIN && member.roles.cache.has(config.CARGO_ADMIN));
 }
 
-function isMecanico(member, config) {
+function isMecanico(member, user, config) {
+  if (user.id === BOT_OWNER_ID) return true; // Você sempre terá acesso
   return member.permissions.has(PermissionsBitField.Flags.Administrator) || (config.CARGO_MECANICO && member.roles.cache.has(config.CARGO_MECANICO));
 }
 
@@ -196,7 +201,7 @@ client.once("ready", async () => {
 // --- EVENTOS DE INTERAÇÃO ---
 client.on("interactionCreate", async interaction => {
   const { member, guild, user, customId } = interaction;
-  if (!guild) return;
+  if (!guild || !member) return; // Garante que temos as info do membro
 
   if (!pontos[guild.id]) pontos[guild.id] = {};
   const serverPontos = pontos[guild.id];
@@ -204,11 +209,12 @@ client.on("interactionCreate", async interaction => {
 
   // 1. SLASH COMMANDS
   if (interaction.isChatInputCommand()) {
-    if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return interaction.reply({ content: "❌ Apenas administradores podem usar isso.", ephemeral: true });
-    }
-
+    
     if (interaction.commandName === 'setup') {
+      if (!isAdmin(member, user, config)) {
+        return interaction.reply({ content: "❌ Apenas administradores ou o dono do bot podem usar isso.", ephemeral: true });
+      }
+
       const embed = new EmbedBuilder()
         .setTitle("⚙️ Setup da Mecânica")
         .setDescription("Clique nos botões abaixo para configurar os canais e cargos do sistema.")
@@ -223,6 +229,10 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (interaction.commandName === 'painel') {
+      if (!isAdmin(member, user, config)) {
+        return interaction.reply({ content: "❌ Apenas administradores ou o dono do bot podem enviar o painel.", ephemeral: true });
+      }
+
       if (!config.CANAL_PAINEL) return interaction.reply({ content: "❌ O **Canal do Painel** não foi configurado no `/setup` ainda.", ephemeral: true });
       
       try {
@@ -262,9 +272,8 @@ client.on("interactionCreate", async interaction => {
 
   // 2. ABRIR MODAIS DE SETUP
   if (interaction.isButton() && customId.startsWith("setup_")) {
-    // Permissão extra por segurança
-    if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return interaction.reply({ content: "❌ Apenas administradores.", ephemeral: true });
+    if (!isAdmin(member, user, config)) {
+      return interaction.reply({ content: "❌ Acesso negado.", ephemeral: true });
     }
 
     if (customId === "setup_canais") {
@@ -296,7 +305,7 @@ client.on("interactionCreate", async interaction => {
       salvarConfigs();
       atualizarPainelAdmin(guild); 
       atualizarRanking(guild);
-      return interaction.reply({ content: `✅ **Configurações salvas!**`, ephemeral: true });
+      return interaction.reply({ content: `✅ **Configurações salvas!** Agora o sistema já deve reconhecer os cargos novamente.`, ephemeral: true });
     }
 
     if (customId.startsWith("modal_add") || customId.startsWith("modal_rem")) {
@@ -320,7 +329,7 @@ client.on("interactionCreate", async interaction => {
 
   // 4. DROPDOWN ADMIN
   if (interaction.isStringSelectMenu() && customId === 'admin_select_user') {
-    if (!isAdmin(member, config)) return interaction.reply({ content: "❌ Acesso negado.", ephemeral: true });
+    if (!isAdmin(member, user, config)) return interaction.reply({ content: "❌ Acesso negado.", ephemeral: true });
     const selectedUserId = interaction.values[0];
     const p = serverPontos[selectedUserId];
     const statusTexto = p.ativo ? (p.pausado ? "🟡 Pausado" : "🟢 Em Serviço") : "🔴 Fora de Serviço";
@@ -344,9 +353,9 @@ client.on("interactionCreate", async interaction => {
   // 5. BOTÕES DE PONTO & ADMIN GLOBAIS
   if (interaction.isButton()) {
     
-    // NOVO: Tratamento do botão Resetar Dados
+    // Tratamento do botão Resetar Dados
     if (customId === "reset_global") {
-      if (!isAdmin(member, config)) return interaction.reply({ content: "❌ Acesso negado. Apenas administradores.", ephemeral: true });
+      if (!isAdmin(member, user, config)) return interaction.reply({ content: "❌ Acesso negado. Apenas administradores.", ephemeral: true });
       
       pontos[guild.id] = {}; // Zera os pontos deste servidor
       salvarPontos(); 
@@ -373,13 +382,13 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (customId === "stats_global") {
-      if (!isAdmin(member, config)) return interaction.reply({ content: "❌ Acesso negado.", ephemeral: true });
+      if (!isAdmin(member, user, config)) return interaction.reply({ content: "❌ Acesso negado.", ephemeral: true });
       const emServico = Object.values(serverPontos).filter(p => p.ativo).length;
       return interaction.reply({ content: `📊 **ESTATÍSTICAS:**\n🔧 Em serviço agora: \`${emServico}\``, ephemeral: true });
     }
 
     if (["iniciar", "pausar", "retomar", "finalizar"].includes(customId)) {
-      if (!isMecanico(member, config)) return interaction.reply({ content: "❌ Apenas mecânicos podem usar isso.", ephemeral: true });
+      if (!isMecanico(member, user, config)) return interaction.reply({ content: "❌ Apenas mecânicos podem usar isso.", ephemeral: true });
       await interaction.deferReply({ ephemeral: true });
       
       if (!serverPontos[user.id]) serverPontos[user.id] = { total: 0, ativo: false, inicio: null, pausado: false, pausas: 0, nome: member.displayName };
