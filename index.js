@@ -323,7 +323,7 @@ client.on("interactionCreate", async interaction => {
     return interaction.reply({ embeds: [embedInfo], components: [botoesAcao], ephemeral: true })
   }
 
-  // 5. BOTÕES DE PONTO
+  // 5. BOTÕES DE PONTO E ADMIN
   if (interaction.isButton()) {
     if (customId.startsWith("add_time_") || customId.startsWith("rem_time_")) {
       const alvoId = customId.split("_")[2]
@@ -347,6 +347,41 @@ client.on("interactionCreate", async interaction => {
       const emServico = Object.values(serverPontos).filter(p => p.ativo).length
       return interaction.reply({ content: `📊 **ESTATÍSTICAS:**\n🔧 Em serviço agora: \`${emServico}\``, ephemeral: true })
     }
+
+    // --- NOVA TRAVA DE SEGURANÇA PARA RESET ---
+    if (customId === "reset_global") {
+      if (!config.CARGO_ADMIN || !member.roles.cache.has(config.CARGO_ADMIN)) {
+        return interaction.reply({ content: "❌ Acesso negado. Apenas administradores podem resetar.", ephemeral: true })
+      }
+      
+      const embedConfirm = new EmbedBuilder()
+        .setTitle("⚠️ ATENÇÃO: Confirmação de Reset")
+        .setDescription("Você tem **certeza absoluta** que deseja resetar todas as horas e o ranking de todos os mecânicos? **Essa ação não pode ser desfeita.**")
+        .setColor("#E74C3C");
+
+      const botoesConfirm = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("confirm_reset_global").setLabel("Sim, Resetar Tudo").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("cancel_reset_global").setLabel("Cancelar").setStyle(ButtonStyle.Secondary)
+      );
+
+      return interaction.reply({ embeds: [embedConfirm], components: [botoesConfirm], ephemeral: true })
+    }
+
+    if (customId === "confirm_reset_global") {
+      if (!config.CARGO_ADMIN || !member.roles.cache.has(config.CARGO_ADMIN)) return;
+      
+      pontos[guild.id] = {} 
+      salvarPontos()
+      atualizarRanking(guild)
+      atualizarPainelAdmin(guild)
+      
+      return interaction.update({ content: "✅ **Feito!** Todos os dados foram resetados com sucesso.", embeds: [], components: [] })
+    }
+
+    if (customId === "cancel_reset_global") {
+      return interaction.update({ content: "👍 **Ação cancelada.** Os dados dos mecânicos estão a salvo.", embeds: [], components: [] })
+    }
+    // ------------------------------------------
 
     if (["iniciar", "pausar", "retomar", "finalizar"].includes(customId)) {
       if (!config.CARGO_MECANICO || !member.roles.cache.has(config.CARGO_MECANICO)) return interaction.reply({ content: "❌ Apenas mecânicos podem usar isso.", ephemeral: true })
@@ -385,7 +420,6 @@ client.on("interactionCreate", async interaction => {
           const agoraData = new Date()
           const horaFooter = agoraData.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
-          // EMBED ESTILO ANTIGO (CONSERTADO)
           const embedLog = new EmbedBuilder()
             .setTitle("📋 | REGISTRO DE EXPEDIENTE")
             .setColor("#2ECC71")
