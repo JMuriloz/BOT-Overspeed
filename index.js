@@ -43,6 +43,8 @@ function salvarPontos() { fs.writeFileSync("pontos.json", JSON.stringify(pontos,
 function salvarConfigs() { fs.writeFileSync("configs.json", JSON.stringify(configs, null, 2)); }
 
 function formatarTempo(ms) {
+  // Evita exibir números negativos caso haja algum erro de cálculo
+  if (ms < 0) ms = 0;
   const s = Math.floor(ms / 1000);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
@@ -120,7 +122,11 @@ async function atualizarPainelAdmin(guild) {
       const nome = p.nome || "Mecânico";
 
       if (p.ativo) {
-        const tempo = agora - p.inicio - p.pausas;
+        // Correção visual no painel: se pausado, congela o tempo na hora que pausou
+        const tempo = p.pausado 
+          ? p.pausaInicio - p.inicio - p.pausas 
+          : agora - p.inicio - p.pausas;
+
         const inicioTempo = `<t:${Math.floor(p.inicio / 1000)}:t>`;
         const status = p.pausado ? "🟡 *Pausado*" : "🟢 *Trabalhando*";
         
@@ -353,11 +359,10 @@ client.on("interactionCreate", async interaction => {
   // 5. BOTÕES DE PONTO & ADMIN GLOBAIS
   if (interaction.isButton()) {
     
-    // Tratamento do botão Resetar Dados
     if (customId === "reset_global") {
       if (!isAdmin(member, user, config)) return interaction.reply({ content: "❌ Acesso negado. Apenas administradores.", ephemeral: true });
       
-      pontos[guild.id] = {}; // Zera os pontos deste servidor
+      pontos[guild.id] = {}; 
       salvarPontos(); 
       atualizarRanking(guild); 
       atualizarPainelAdmin(guild);
@@ -372,14 +377,18 @@ client.on("interactionCreate", async interaction => {
       return interaction.showModal(modal);
     }
 
-    // 👇 TRECHO ATUALIZADO (LOGS NO FORÇADO) 👇
     if (customId.startsWith("force_stop_")) {
       const alvoId = customId.split("_")[2];
       const p = serverPontos[alvoId];
       if (!p?.ativo) return interaction.reply({ content: "❌ Usuário não está em serviço.", ephemeral: true });
       
       const agora = Date.now();
-      const tempoSessao = agora - p.inicio - (p.pausas || 0);
+
+      // CORREÇÃO AQUI: Se forçado enquanto pausado, usa o tempo em que a pausa iniciou.
+      const tempoSessao = p.pausado 
+        ? p.pausaInicio - p.inicio - (p.pausas || 0)
+        : agora - p.inicio - (p.pausas || 0);
+
       p.total += tempoSessao; 
 
       if (config.CANAL_LOGS) {
@@ -388,7 +397,7 @@ client.on("interactionCreate", async interaction => {
 
         const embedLogForcado = new EmbedBuilder()
           .setTitle("⚠️ | REGISTRO ENCERRADO FORÇADAMENTE")
-          .setColor("#E74C3C") // Vermelho para destacar que foi forçado
+          .setColor("#E74C3C") 
           .addFields(
             { name: "👤 Mecânico", value: `<@${alvoId}> (${p.nome || "Mecânico"})` },
             { name: "🛡️ Admin Responsável", value: `<@${user.id}> (${member.displayName})` },
@@ -411,7 +420,6 @@ client.on("interactionCreate", async interaction => {
       salvarPontos(); atualizarRanking(guild); atualizarPainelAdmin(guild);
       return interaction.reply({ content: "⛔ **Ponto encerrado forçadamente e registrado nas logs!**", ephemeral: true });
     }
-    // 👆 FIM DO TRECHO ATUALIZADO 👆
 
     if (customId === "stats_global") {
       if (!isAdmin(member, user, config)) return interaction.reply({ content: "❌ Acesso negado.", ephemeral: true });
@@ -449,7 +457,11 @@ client.on("interactionCreate", async interaction => {
       if (customId === "finalizar") {
         if (!p.ativo) return interaction.editReply("⚠️ Ponto não iniciado.");
         
-        const tempoSessao = agora - p.inicio - (p.pausas || 0);
+        // CORREÇÃO AQUI: Considera se ele clicou finalizar enquanto estava pausado.
+        const tempoSessao = p.pausado 
+          ? p.pausaInicio - p.inicio - (p.pausas || 0)
+          : agora - p.inicio - (p.pausas || 0);
+
         p.total += tempoSessao;
         
         if (config.CANAL_LOGS) {
